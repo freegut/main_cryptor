@@ -1,17 +1,24 @@
 #include "utils.h"
+#include <wincrypt.h>
 
 void generate_random(BYTE* buffer, size_t len) {
-    RtlGenRandom(buffer, len);
+    HCRYPTPROV hCryptProv;
+    if (CryptAcquireContextA(&hCryptProv, NULL, NULL, PROV_RSA_FULL, CRYPT_VERIFYCONTEXT)) {
+        CryptGenRandom(hCryptProv, (DWORD)len, buffer);
+        CryptReleaseContext(hCryptProv, 0);
+    }
 }
 
 void generate_password(char* buffer, size_t len) {
     const char* charset = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%^&*";
-    BYTE random[len];
+    BYTE* random = HeapAlloc(GetProcessHeap(), 0, len);
+    if (!random) return;
     generate_random(random, len);
     for (size_t i = 0; i < len; i++) {
         buffer[i] = charset[random[i] % strlen(charset)];
     }
     buffer[len] = '\0';
+    HeapFree(GetProcessHeap(), 0, random);
 }
 
 void secure_zero(BYTE* buffer, size_t len) {

